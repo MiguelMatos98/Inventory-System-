@@ -25,11 +25,19 @@
 UENUM(BlueprintType)
 enum class EDirection : uint8
 {
-    None,
+    Null,
     Up,
     Down,
     Left,
     Right
+};
+
+enum class EDragState : uint8
+{
+    Null,
+    Select,
+    Moved,
+    Released
 };
 
 UCLASS()
@@ -144,6 +152,7 @@ private:
 
     UPROPERTY()
     bool bHasItemDragStarted;
+
     UPROPERTY()
     FVector2D MousePosition;
 
@@ -173,6 +182,8 @@ private:
 
     UPROPERTY()
     EDirection ScheduledDirection;
+
+    EDragState DragState;
 
 private:
 
