@@ -133,9 +133,6 @@ private:
     static uint32 ItemCounter;
 
     UPROPERTY()
-    bool bPendingRemoval;
-
-    UPROPERTY()
     int32 DraggedItemIndex;
 
     UPROPERTY()
@@ -148,40 +145,7 @@ private:
     FItem DraggedItem;
 
     UPROPERTY()
-    bool bIsItemDragging;
-
-    UPROPERTY()
-    bool bHasItemDragStarted;
-
-    UPROPERTY()
     FVector2D MousePosition;
-
-    UPROPERTY()
-    bool bIsSliding;
-
-    UPROPERTY()
-    int32 SlideFromIndex;
-
-    UPROPERTY()
-    int32 SlideToIndex;
-
-    UPROPERTY()
-    float SlideProgress;
-
-    UPROPERTY()
-    float SlideDuration;
-
-    UPROPERTY()
-    FItem SlidingItem;
-
-    UPROPERTY()
-    int32 ScheduledFromIndex;
-
-    UPROPERTY()
-    int32 ScheduledToIndex;
-
-    UPROPERTY()
-    EDirection ScheduledDirection;
 
     EDragState DragState;
 
