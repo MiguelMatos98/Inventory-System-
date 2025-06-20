@@ -53,13 +53,12 @@ public:
     // NativeNativeConstruct used for reconstructing inventory Widgets 
     virtual void NativeConstruct() override;
 
-    // NativeOnMouseButtonDown used for detecting hovered slot, setting drag state and the dragged item 
+    // NativeOnMouseButtonDown used for keeping track of the hovered slot, mouse position, drag state and dragged item 
     virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
 
-    // NativeOnMouseMove 
     virtual FReply NativeOnMouseMove(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
-
     virtual FReply NativeOnMouseButtonUp(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
+
 
     void Open();
 
@@ -71,17 +70,15 @@ public:
 
     const TArray<FItem>& GetItems() const;
 
-    TArray<TObjectPtr<UBorder>> GetForegroundBorders() const;
+    TArray<TObjectPtr<UBorder>>  GetForegroundBorders() const;
 
     TObjectPtr<UUniformGridPanel> GetGrid() const;
 
 private:
 
-    UPROPERTY()
-    uint64 MaxRows;
-    
-    UPROPERTY()
-    uint64 MaxColumns;
+    uint32 MaxRows;
+
+    uint32 MaxColumns;
 
     UPROPERTY()
     bool bIsInventoryFull;
@@ -122,22 +119,22 @@ private:
     UPROPERTY()
     TObjectPtr<UOverlay> DraggedItemWidget;
 
-    static uint64 ItemCounter;
+    static uint32 ItemCounter;
 
     UPROPERTY()
-    int64 HoveredSlot;
+    int32 DragStartSlot;
 
     UPROPERTY()
-    int64 OriginalSlot;
+    int32 OriginalSlot;
+
+    UPROPERTY()
+    int32 PreviousSlotIndex;
 
     UPROPERTY()
     FItem DraggedItem;
 
     UPROPERTY()
-    FVector2D MouseAbsolutePosition;
-
-    UPROPERTY()
-    FVector2D MouseLocalPosition;
+    FVector2D MousePosition;
 
     EDragState DragState;
 
@@ -145,9 +142,11 @@ private:
 
     void Create();
 
+    void UpdateSlotUI(uint32 SlotIndex);
+
     void RemoveItemIcon(uint32 SlotIndex);
 
-    TObjectPtr<UOverlay> CreateItemIcon(const FItem& item);
+    void CreateItemIcon(uint32 SlotIndex);
 
     uint32 FindFirstEmptySlot() const;
 
@@ -155,7 +154,7 @@ private:
 
     FVector2D GetSlotPosition(uint32 SlotIndex) const;
 
-    void MoveItem(const FPointerEvent& MouseEvent, uint64& HoveredSlotRow, uint64& HoveredSlotColumn);
+    void MoveItem(const FPointerEvent& MouseEvent);
 
     void RemoveItem(int32 SlotIndex);
 
