@@ -169,13 +169,12 @@ FReply UInventory::NativeOnMouseMove(const FGeometry& InGeometry, const FPointer
         const FVector2D BR = TL + SlotGeom.GetLocalSize();
         const int32 Row = DragStartSlot / MaxColumns;
         const int32 Col = DragStartSlot % MaxColumns;
-        constexpr float Pad = 1.f, Buf = 1.f;
 
         bool bCrossed =
-            (Row == 0 && ScreenPos.Y < TL.Y - Pad - Buf) ||
-            (Row == MaxRows - 1 && ScreenPos.Y > BR.Y + Pad + Buf) ||
-            (Col == 0 && ScreenPos.X < TL.X - Pad - Buf) ||
-            (Col == MaxColumns - 1 && ScreenPos.X > BR.X + Pad + Buf);
+            (Row == 0 && ScreenPos.Y < TL.Y) ||
+            (Row == MaxRows - 1 && ScreenPos.Y > BR.Y) ||
+            (Col == 0 && ScreenPos.X < TL.X) ||
+            (Col == MaxColumns - 1 && ScreenPos.X > BR.X);
 
         if (bCrossed)
         {
@@ -319,51 +318,72 @@ FReply UInventory::NativeOnMouseButtonUp(const FGeometry& InGeometry, const FPoi
     // 4) Otherwise, drop off‑grid → spawn actor in world
     else if (UWorld* World = GetWorld())
     {
-        const FTransform& T = DraggedItem.WorldObjectTransform;
-        DrawDebugSphere(World, T.GetLocation(), 25.f, 12, FColor::Blue, false, 5.f);
-
-        FTransform S = T;
-        S.SetScale3D(T.GetScale3D());
-        FActorSpawnParameters P;
-        P.SpawnCollisionHandlingOverride =
-            ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
-
-        AStaticMeshActor* Actor = World->SpawnActor<AStaticMeshActor>(
-            AStaticMeshActor::StaticClass(), S, P);
-
-        if (Actor)
+        // 4.1) Deproject mouse to world ray
+        APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0);
+        FVector WorldOrigin, WorldDir;
+        if (PC && PC->DeprojectScreenPositionToWorld(ScreenPos.X, ScreenPos.Y, WorldOrigin, WorldDir))
         {
-            Actor->GetStaticMeshComponent()->SetMobility(EComponentMobility::Movable);
-            if (DraggedItem.StaticMesh.IsValid())
-                if (auto* Mesh = DraggedItem.StaticMesh.LoadSynchronous())
-                    Actor->GetStaticMeshComponent()->SetStaticMesh(Mesh);
+            // 4.2) Trace into the world
+            FHitResult Hit;
+            const float TraceDist = 10000.f;
+            const bool bHit = World->LineTraceSingleByChannel(
+                Hit,
+                WorldOrigin,
+                WorldOrigin + WorldDir * TraceDist,
+                ECC_Visibility
+            );
 
-        }
+            // 4.3) Choose spawn location
+            const FVector SpawnLoc = bHit
+                ? Hit.Location
+                : (WorldOrigin + WorldDir * 500.f);
 
-        for (int32 i = 0; i < DraggedItem.StoredMaterials.Num(); ++i)
-        {
-            if (DraggedItem.StoredMaterials[i].IsValid())
+            DrawDebugSphere(World, SpawnLoc, 25.f, 12, FColor::Blue, false, 5.f);
+
+            // 4.4) Build transform using stored rotation & scale
+            const FQuat   StoredRot = DraggedItem.WorldObjectTransform.GetRotation();
+            const FVector StoredScale = DraggedItem.WorldObjectTransform.GetScale3D();
+            const FTransform S(StoredRot, SpawnLoc, StoredScale);
+
+            FActorSpawnParameters P;
+            P.SpawnCollisionHandlingOverride =
+                ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+
+            // 4.5) Spawn and configure
+            if (AStaticMeshActor* Actor = World->SpawnActor<AStaticMeshActor>(
+                AStaticMeshActor::StaticClass(), S, P))
             {
-                UMaterialInterface* Mat = DraggedItem.StoredMaterials[i].LoadSynchronous();
-                if (Mat)
+                Actor->GetStaticMeshComponent()->SetMobility(EComponentMobility::Movable);
+
+                if (DraggedItem.StaticMesh.IsValid())
+                    if (auto* Mesh = DraggedItem.StaticMesh.LoadSynchronous())
+                        Actor->GetStaticMeshComponent()->SetStaticMesh(Mesh);
+
+                for (int32 i = 0; i < DraggedItem.StoredMaterials.Num(); ++i)
                 {
-                    Actor->GetStaticMeshComponent()->SetMaterial(i, Mat);
-                }
-                else
-                {
-                    UE_LOG(LogTemp, Warning, TEXT("Material %d failed to load."), i);
+                    if (DraggedItem.StoredMaterials[i].IsValid())
+                    {
+                        if (UMaterialInterface* Mat = DraggedItem.StoredMaterials[i].LoadSynchronous())
+                            Actor->GetStaticMeshComponent()->SetMaterial(i, Mat);
+                        else
+                            UE_LOG(LogTemp, Warning, TEXT("Material %d failed to load."), i);
+                    }
+                    else
+                    {
+                        UE_LOG(LogTemp, Warning, TEXT("Material %d is invalid."), i);
+                    }
                 }
             }
-            else
+
+            // 4.6) Clean up inventory
+            if (Items[OriginalSlot].WorldObjectReference)
             {
-                UE_LOG(LogTemp, Warning, TEXT("Material %d is invalid."), i);
+                RemoveItem(OriginalSlot);
             }
         }
-
-
-        if (Items[OriginalSlot].WorldObjectReference)
+        else
         {
-            RemoveItem(OriginalSlot);
+            UE_LOG(LogTemp, Warning, TEXT("Could not deproject mouse position."));
         }
     }
 
@@ -418,7 +438,7 @@ void UInventory::AddItem(AActor* ItemActor)
             MaxExistingIndex = FMath::Max(MaxExistingIndex, Item.Index);
         }
     }
-    NewItem.Index = MaxExistingIndex + 1;
+    NewItem.Index = ItemCounter;
 
     // Attempt to grab the static mesh from the actor's components:
     if (UStaticMeshComponent* MeshComp = ItemActor->FindComponentByClass<UStaticMeshComponent>())
