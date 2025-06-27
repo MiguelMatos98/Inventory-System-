@@ -21,24 +21,16 @@
 #include "Kismet/GameplayStatics.h"
 #include "Inventory.generated.h"
 
-// Direction enum created for setting Item movement
-enum class EDirection : uint8
-{
-    Null,
-    Up,
-    Down,
-    Left,
-    Right
-};
-
+// Drag state is responsible for tracking all the stages of drag interations
 enum class EDragState : uint8
 {
-    Null,
-    Select,
-    Moved,
-    Released
+    None,     // Nothing is being dragged
+    Pressed,  // Item has been slected
+    Dragging, // Item is being dragged
+    Dropped   // Item has been dropped
 };
 
+// Inventory user widget calls (Main class)
 UCLASS()
 class UInventory : public UUserWidget
 {
@@ -47,66 +39,84 @@ class UInventory : public UUserWidget
 public:
     UInventory(const FObjectInitializer& ObjectInitializer);
 
-    // NativeOnInitialized used for creating and set up inventory's UI
+    // Called when the widget is first initialized
     virtual void NativeOnInitialized() override;
 
-    // NativeNativeConstruct used for reconstructing inventory Widgets 
+    // Called when the widget is constructed or reconstructed
     virtual void NativeConstruct() override;
 
-    // NativeOnMouseButtonDown used for keeping track of the hovered slot, mouse position, drag state and dragged item 
-    virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
+    // ******************** Mouse events for drag detection ********************
 
+    virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
     virtual FReply NativeOnMouseMove(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
     virtual FReply NativeOnMouseButtonUp(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
 
+    // ******************** Open and close for toggling Inventory via Tab ********************
 
+    UFUNCTION()
     void Open();
 
+    UFUNCTION()
     void Close();
 
+    // ***************************************************************************************
+
+    // Adds an item to the inventory
+    UFUNCTION()
     void AddItem(AActor* ItemActor);
 
-    bool GetIsInventoryFull() const;
+    // Checks if the inventory is full
+    UFUNCTION()
+    bool IsInventoryFull() const;
 
+    // Returns a reference to the item array
+    UFUNCTION()
     const TArray<FItem>& GetItems() const;
 
-    TArray<TObjectPtr<UBorder>>  GetForegroundBorders() const;
+    // Returns the array of inventory slots
+    TArray<TObjectPtr<UBorder>> GetSlots() const;
 
+    // Returns the grid widget containing all slot data
     TObjectPtr<UUniformGridPanel> GetGrid() const;
 
 private:
 
+    // ************* Max rows and columns for determening grid size *************
+    UPROPERTY()
     uint32 MaxRows;
 
+    UPROPERTY()
     uint32 MaxColumns;
 
-    UPROPERTY()
-    bool bIsInventoryFull;
+    // **************************************************************************
 
     UPROPERTY()
     TArray<FItem> Items;
 
     UPROPERTY()
-    TArray<TObjectPtr<UBorder>> ForegroundBorders;
+    TArray<TObjectPtr<UBorder>> Slots;
 
     UPROPERTY()
     TObjectPtr<UCanvasPanel> Canvas;
 
+    // Inventory's grey background
     UPROPERTY()
-    TObjectPtr<UBorder> BackgroundBorder;
+    TObjectPtr<UBorder> Background;
 
     UPROPERTY()
-    TObjectPtr<UCanvasPanelSlot> BackgroundBorderSlot;
+    TObjectPtr<UCanvasPanelSlot> BackgroundSlot;
 
     UPROPERTY()
     TObjectPtr<UVerticalBox> BackgroundVerticalBox;
 
+    // Inventory Title set to "Inventory"
     UPROPERTY()
     TObjectPtr<UTextBlock> Title;
 
     UPROPERTY()
     TObjectPtr<UVerticalBoxSlot> TitleVerticalBoxSlot;
 
+    // Grid of the inventory slots
     UPROPERTY()
     TObjectPtr<UUniformGridPanel> Grid;
 
@@ -116,49 +126,59 @@ private:
     UPROPERTY()
     TObjectPtr<UUniformGridSlot> GridSlot;
 
+    // Visual Representation of PoppedOutItem
     UPROPERTY()
-    TObjectPtr<UOverlay> DraggedItemWidget;
+    TObjectPtr<UOverlay> PoppedOutItemWidget;
 
-    static uint32 ItemCounter;
-
+    // Index of the currently hovered slot
     UPROPERTY()
-    int32 DragStartSlot;
+    int32 HoveredSlotIndex;
 
+    // Index of the slot where the drag used to be originaly 
     UPROPERTY()
-    int32 OriginalSlot;
+    int32 OriginSlotIndex;
 
+    // PoppedOutItem used to copy internal item when item outside inventoty 
     UPROPERTY()
-    int32 PreviousSlotIndex;
+    FItem PoppedOutItem;
 
+    // Mouse position in screen space
     UPROPERTY()
-    FItem DraggedItem;
+    FVector2D MouseScreenSpacePosition;
 
+    // Mouse position relative to the widget
     UPROPERTY()
-    FVector2D MousePosition;
+    FVector2D MouseWidgetLocalPosition;
 
+    // Current drag state
     EDragState DragState;
+
+    UPROPERTY()
+    bool bIsMouseInsideInventory;
 
 private:
 
+    // Constructs the initial layout and slots
+    UFUNCTION()
     void Create();
 
-    void UpdateSlotUI(uint32 SlotIndex);
+    // Updates all slot visuals based on current item data
+    UFUNCTION()
+    void RefreshInventory();
 
-    void RemoveItemIcon(uint32 SlotIndex);
-
+    // Creates or updates the icon for a single item slot
+    UFUNCTION()
     void CreateItemIcon(uint32 SlotIndex);
 
-    uint32 FindFirstEmptySlot() const;
+    // Finds the first empty inventory slot index
+    UFUNCTION()
+    int32 FindFirstEmptySlot() const;
 
-    EDirection GetMoveDirection(uint32 RowA, uint32 ColA, uint32 RowB, uint32 ColB) const;
+    // Resposible for updating all items position on drag
+    UFUNCTION()
+    void InternallyRearrangeItems(const FPointerEvent& MouseEvent);
 
-    FVector2D GetSlotPosition(uint32 SlotIndex) const;
-
-    void MoveItem(const FPointerEvent& MouseEvent);
-
-    void RemoveItem(int32 SlotIndex);
-
-    uint32 FindHoveredSlot(const FPointerEvent& InMouseEvent);
-
-    void RefreshInventoryUI();
+    // Returns the index of the hovered slot under the mouse
+    UFUNCTION()
+    int32 FindHoveredSlot(const FPointerEvent& InMouseEvent);
 };
