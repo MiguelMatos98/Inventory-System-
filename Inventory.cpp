@@ -155,8 +155,8 @@ FReply UInventory::NativeOnMouseMove(const FGeometry& InGeometry, const FPointer
     // Checking for starting a drag (with movement threshold instead of requiring exit)
     if (DragState == EDragState::Pressed && OriginSlotIndex != INDEX_NONE && Slots.IsValidIndex(OriginSlotIndex))
     {
-        const FVector2D Delta = InMouseEvent.GetCursorDelta();
-        if (Delta.SizeSquared() > FMath::Square(4.0f)) // drag threshold
+        const FVector2D& DeltaCursor = InMouseEvent.GetCursorDelta();
+        if (DeltaCursor.SizeSquared() > FMath::Square(4.0f)) // drag threshold
         {
             // Transitioning to dragging
             UBorder* OriginBorder = Slots[OriginSlotIndex].Get();
@@ -280,29 +280,44 @@ FReply UInventory::NativeOnMouseButtonUp(const FGeometry& InGeometry, const FPoi
     }
     else if (!bIsMouseInsideInventory)
     {
-        // Spawn world object when item dropped outside inventory
+        // Spawn world object when dropped outside inventory, using deferred spawn
         if (UWorld* World = GetWorld(); World && OriginSlotIndex != INDEX_NONE && Items.IsValidIndex(OriginSlotIndex))
         {
-            FActorSpawnParameters SpawnParameters;
-            SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+            // Begin deferred spawn
+            FTransform SpawnTransform = PoppedOutItem.WorldObjectTransform;
+            AStaticMeshActor* MeshActor = World->SpawnActorDeferred<AStaticMeshActor>(AStaticMeshActor::StaticClass(), SpawnTransform, nullptr, nullptr, ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn);
 
-            AStaticMeshActor* MeshActor = World->SpawnActor<AStaticMeshActor>(
-                AStaticMeshActor::StaticClass(),
-                PoppedOutItem.WorldObjectTransform,
-                SpawnParameters
-            );
             if (MeshActor)
             {
-                UStaticMeshComponent* MeshComponent = MeshActor->GetStaticMeshComponent();
-                MeshComponent->SetMobility(EComponentMobility::Movable);
+                UStaticMeshComponent* MeshComp = MeshActor->GetStaticMeshComponent();
+                MeshComp->SetMobility(EComponentMobility::Movable);
+
+                // Set mesh
                 if (UStaticMesh* Mesh = PoppedOutItem.StaticMesh.LoadSynchronous())
-                    MeshComponent->SetStaticMesh(Mesh);
-                for (int32 index = 0; index < PoppedOutItem.StoredMaterials.Num(); ++index)
                 {
-                    if (PoppedOutItem.StoredMaterials[index].IsValid())
-                        MeshComponent->SetMaterial(index, PoppedOutItem.StoredMaterials[index].LoadSynchronous());
+                    MeshComp->SetStaticMesh(Mesh);
                 }
+
+                // Apply stored materials safely
+                const int32 SlotCount = MeshComp->GetNumMaterials();
+                for (int32 MaterialIndex = 0; MaterialIndex < PoppedOutItem.StoredMaterials.Num(); ++MaterialIndex)
+                {
+                    // Validate slot index and load soft pointer
+                    if (MaterialIndex < SlotCount)
+                    {
+                        UMaterialInterface* Mat = PoppedOutItem.StoredMaterials[MaterialIndex].LoadSynchronous();
+                        if (Mat)
+                        {
+                            MeshComp->SetMaterial(MaterialIndex, Mat);
+                        }
+                    }
+                }
+
+                // Finish spawning so BP construction scripts run AFTER our setup
+                UGameplayStatics::FinishSpawningActor(MeshActor, SpawnTransform);
             }
+
+            // Clear the original slot
             Items[OriginSlotIndex] = FItem{};
         }
     }
@@ -343,7 +358,7 @@ void UInventory::AddItem(AActor* ItemActor)
     TSet<int32> UsedIndices;
     for (const FItem& Item : Items)
     {
-        if (Item.WorldObjectReference)
+        if (Item.Index != INDEX_NONE)
         {
             UsedIndices.Add(Item.Index);
         }
@@ -373,7 +388,7 @@ void UInventory::AddItem(AActor* ItemActor)
     {
         if (MeshComponent->GetStaticMesh())
         {
-            NewItem.StaticMesh = MeshComponent->GetStaticMesh();
+            NewItem.StaticMesh = TSoftObjectPtr<UStaticMesh>(MeshComponent->GetStaticMesh());
         }
 
         for (int32 i = 0; i < MeshComponent->GetNumMaterials(); ++i)
@@ -381,7 +396,7 @@ void UInventory::AddItem(AActor* ItemActor)
             UMaterialInterface* MaterialInterface = MeshComponent->GetMaterial(i);
             if (IsValid(MaterialInterface))
             {
-                NewItem.StoredMaterials.Add(MaterialInterface);
+                NewItem.StoredMaterials.Add(TSoftObjectPtr<UMaterialInterface>(MaterialInterface));
             }
         }
     }
